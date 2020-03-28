@@ -1,19 +1,5 @@
 /*
-  Optical SP02 Detection (SPK Algorithm) using the MAX30105 Breakout
-  By: Nathan Seidle @ SparkFun Electronics
-  Date: October 19th, 2016
-  https://github.com/sparkfun/MAX30105_Breakout
-
-  This demo shows heart rate and SPO2 levels.
-
-  It is best to attach the sensor to your finger using a rubber band or other tightening
-  device. Humans are generally bad at applying constant pressure to a thing. When you
-  press your finger against the sensor it varies enough to cause the blood in your
-  finger to flow differently which causes the sensor readings to go wonky.
-
-  This example is based on MAXREFDES117 and RD117_LILYPAD.ino from Maxim. Their example
-  was modified to work with the SparkFun MAX30105 library and to compile under Arduino 1.6.11
-  Please see license file for more info.
+  Based on the example "Example8_SPO2" of library "SparkFun_MAX3010x_Sensor_Library"
 
   Hardware Connections (Breakoutboard to Arduino):
   -5V = 5V (3.3V is allowed)
@@ -35,7 +21,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 MAX30105 particleSensor;
 
-#define MAX_BRIGHTNESS 255
+#define MAX_BRIGHTNESS        255
+#define TIME_RESET            15000
 
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
 //Arduino Uno doesn't have enough SRAM to store 100 samples of IR led data and red led data in 32-bit format
@@ -46,6 +33,7 @@ uint16_t redBuffer[100];  //red LED sensor data
 uint32_t irBuffer[100]; //infrared LED sensor data
 uint32_t redBuffer[100];  //red LED sensor data
 #endif
+uint32_t timerReset;
 
 int32_t bufferLength; //data length
 int32_t spo2; //SPO2 value
@@ -54,38 +42,29 @@ int8_t validSPO2; //indicator to show if the SPO2 calculation is valid
 int32_t heartRate; //heart rate value
 int8_t validHeartRate; //indicator to show if the heart rate calculation is valid
 
-byte pulseLED = 11; //Must be on PWM pin
 byte readLED = 13; //Blinks with each data read
 
 void setup()
 {
-  Serial.begin(115200); // initialize serial communication at 115200 bits per second:
-
   lcd.begin();
   // Turn on the blacklight and print a message.
   lcd.backlight();
   lcd.setCursor(0, 0);
   lcd.print("Posiziona");
   lcd.setCursor(0, 1);
-  lcd.print("l'indice");
+  lcd.print("dito indice");
 
-  pinMode(pulseLED, OUTPUT);
   pinMode(readLED, OUTPUT);
 
   // Initialize sensor
   if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) //Use default I2C port, 400kHz speed
   {
-    Serial.println(F("MAX30105 was not found. Please check wiring/power."));
     lcd.setCursor(0, 0);
     lcd.print("Controlla");
     lcd.setCursor(0, 1);
     lcd.print("i collegamenti");
     while (1);
   }
-
-  //Serial.println(F("Attach sensor to finger with rubber band. Press any key to start conversion"));
-  //while (Serial.available() == 0) ; //wait until user presses a key
-  //Serial.read();
 
   byte ledBrightness = 60; //def: 60, Options: 0=Off to 255=50mA
   byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
@@ -110,11 +89,6 @@ void loop()
     redBuffer[i] = particleSensor.getRed();
     irBuffer[i] = particleSensor.getIR();
     particleSensor.nextSample(); //We're finished with this sample so move to next sample
-
-    Serial.print(F("red="));
-    Serial.print(redBuffer[i], DEC);
-    Serial.print(F(", ir="));
-    Serial.println(irBuffer[i], DEC);
   }
 
   //calculate heart rate and SpO2 after first 100 samples (first 4 seconds of samples)
@@ -141,44 +115,28 @@ void loop()
       redBuffer[i] = particleSensor.getRed();
       irBuffer[i] = particleSensor.getIR();
       particleSensor.nextSample(); //We're finished with this sample so move to next sample
-
-      //send samples and calculation result to terminal program through UART
-      Serial.print(F("red="));
-      Serial.print(redBuffer[i], DEC);
-      Serial.print(F(", ir="));
-      Serial.print(irBuffer[i], DEC);
-
-      Serial.print(F(", HR="));
-      Serial.print(heartRate, DEC);
-
-      Serial.print(F(", HRvalid="));
-      Serial.print(validHeartRate, DEC);
-
-      Serial.print(F(", SPO2="));
-      Serial.print(spo2, DEC);
-
-      Serial.print(F(", SPO2Valid="));
-      Serial.println(validSPO2, DEC);
     }
 
-    lcd.clear();
-    if (spo2 < 0)
+    if (millis() > (timerReset + TIME_RESET))
     {
-      lcd.print("Err");
-    }
-    else //if (spo2 > memSpo2)
-    {
+      lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("HR= ");
-      lcd.print(heartRate, DEC);
+      if (spo2 < 0)
+      {
+        lcd.print("Errore");
+        lcd.setCursor(0, 1);
+        lcd.print("Attendi");
+        timerReset = millis();
+      }
+      else //if (spo2 > memSpo2)
+      {
+        lcd.setCursor(0, 0);
+        lcd.print("SPO2= ");
+        lcd.print(spo2, DEC);
 
-      lcd.setCursor(0, 1);
-      lcd.print("SPO2= ");
-      lcd.print(spo2, DEC);
-
-      memSpo2 = spo2;
+        memSpo2 = spo2;
+      }
     }
-
 
     //After gathering 25 new samples recalculate HR and SP02
     maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
