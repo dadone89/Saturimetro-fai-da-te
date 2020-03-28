@@ -22,7 +22,9 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 MAX30105 particleSensor;
 
 #define MAX_BRIGHTNESS        255
-#define TIME_RESET            15000
+#define MAX_ERROR_INF         0.95  
+#define MAX_ERROR_SUP         1.05        
+#define TIME_RESET            5000    //ms
 
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
 //Arduino Uno doesn't have enough SRAM to store 100 samples of IR led data and red led data in 32-bit format
@@ -37,10 +39,12 @@ uint32_t timerReset;
 
 int32_t bufferLength; //data length
 int32_t spo2; //SPO2 value
-int32_t memSpo2;
+int32_t memSpo2 = 100;
 int8_t validSPO2; //indicator to show if the SPO2 calculation is valid
 int32_t heartRate; //heart rate value
 int8_t validHeartRate; //indicator to show if the heart rate calculation is valid
+
+float DiffReadings;
 
 byte readLED = 13; //Blinks with each data read
 
@@ -121,21 +125,21 @@ void loop()
     {
       lcd.clear();
       lcd.setCursor(0, 0);
-      if (spo2 < 0)
+      DiffReadings = spo2 / memSpo2;
+      if ((spo2 < 0)||(DiffReadings > MAX_ERROR_SUP)||(DiffReadings < MAX_ERROR_INF))
       {
-        lcd.print("Errore");
+        lcd.print("Errore misura");
         lcd.setCursor(0, 1);
-        lcd.print("Attendi");
+        lcd.print("Attendi...");
         timerReset = millis();
       }
-      else //if (spo2 > memSpo2)
+      else
       {
         lcd.setCursor(0, 0);
         lcd.print("SPO2= ");
         lcd.print(spo2, DEC);
-
-        memSpo2 = spo2;
       }
+      memSpo2 = spo2;
     }
 
     //After gathering 25 new samples recalculate HR and SP02
